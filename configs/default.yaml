@@ -1,0 +1,35 @@
+# default training config
+data:
+  path: data/ml-100k/u.data
+  min_user_interactions: 5
+  num_negatives_train: 4
+  num_negatives_eval: 99
+  test_size: 1   # leave-one-out (last interaction held out per user)
+
+model:
+  type: neumf      # one of: gmf, mlp, neumf
+  embed_dim_gmf: 16
+  embed_dim_mlp: 32
+  mlp_layers: [64, 32, 16, 8]
+  dropout: 0.0
+
+train:
+  batch_size: 512
+  epochs: 5
+  lr: 1.0e-3
+  weight_decay: 0.0
+  num_workers: 0
+  device: cpu
+  seed: 42
+
+eval:
+  top_k: 10
+
+mlflow:
+  enabled: true
+  experiment_name: ncf-deep-recommender
+  tracking_uri: ./mlruns
+
+artifacts:
+  out_dir: artifacts
+  model_name: neumf.pt
