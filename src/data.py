@@ -126,11 +126,15 @@ class NCFTrainDataset(Dataset):
 
         neg_users = np.repeat(pos_users, self.num_negatives)
         neg_items = np.empty(n_neg, dtype=np.int64)
-        # vectorised rejection sampling
-        for k, u in enumerate(neg_users):
+        # cache the user->set lookup once per resample to avoid the int() each iter
+        cache = self.user_pos
+        N = self.num_items
+        for k in range(n_neg):
+            u = int(neg_users[k])
+            seen = cache[u]
             while True:
-                j = int(self.rng.integers(0, self.num_items))
-                if j not in self.user_pos[int(u)]:
+                j = int(self.rng.integers(0, N))
+                if j not in seen:
                     neg_items[k] = j
                     break
 
