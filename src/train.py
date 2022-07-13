@@ -15,7 +15,14 @@ import torch.nn as nn
 import yaml
 from torch.utils.data import DataLoader
 
-from .data import NCFTrainDataset, build_user_pos_set, load_ratings, remap_ids
+from .data import (
+    NCFTrainDataset,
+    build_user_pos_set,
+    leave_one_out_split,
+    load_ratings,
+    remap_ids,
+)
+from .evaluate import evaluate_loo
 from .model import build_model
 
 
@@ -39,8 +46,10 @@ def train(config_path: str) -> None:
     print(f"users={num_users} items={num_items} rows={len(df)}")
 
     user_pos = build_user_pos_set(df)
+    train_df, test_df = leave_one_out_split(df)
+
     train_ds = NCFTrainDataset(
-        df,
+        train_df,
         user_pos,
         num_items=num_items,
         num_negatives=cfg["data"].get("num_negatives_train", 4),
@@ -78,8 +87,20 @@ def train(config_path: str) -> None:
             opt.step()
             running += loss.item()
             n_batches += 1
+        avg_loss = running / max(n_batches, 1)
+        hr, nd = evaluate_loo(
+            model,
+            test_df,
+            user_pos,
+            num_items=num_items,
+            top_k=cfg["eval"]["top_k"],
+            num_negatives=cfg["data"].get("num_negatives_eval", 99),
+            device=str(device),
+            seed=cfg["train"].get("seed", 42),
+        )
         print(
-            f"epoch {ep}/{epochs} loss={running/max(n_batches,1):.4f} "
+            f"epoch {ep}/{epochs} loss={avg_loss:.4f} "
+            f"hr@{cfg['eval']['top_k']}={hr:.4f} ndcg@{cfg['eval']['top_k']}={nd:.4f} "
             f"time={time.time()-t0:.1f}s"
         )
 
