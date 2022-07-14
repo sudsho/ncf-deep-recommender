@@ -16,6 +16,8 @@ from ..predict import topn_for_user
 app = FastAPI(title="ncf-deep-recommender", version="0.1.0")
 
 CHECKPOINT_PATH = os.environ.get("NCF_CHECKPOINT", "artifacts/neumf.pt")
+DEFAULT_TOP_N = int(os.environ.get("NCF_DEFAULT_N", "10"))
+MAX_TOP_N = int(os.environ.get("NCF_MAX_N", "200"))
 
 
 class Recommendation(BaseModel):
@@ -36,7 +38,7 @@ def health() -> dict:
 @app.get("/recommend", response_model=RecommendResponse)
 def recommend(
     user_id: int = Query(..., ge=0, description="User index (0..num_users-1)"),
-    n: int = Query(10, ge=1, le=200, description="How many items to return"),
+    n: int = Query(DEFAULT_TOP_N, ge=1, le=MAX_TOP_N, description="How many items to return"),
     original_ids: bool = Query(
         False, description="If true, return original MovieLens ids."
     ),
