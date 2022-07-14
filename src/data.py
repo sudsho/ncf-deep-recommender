@@ -129,9 +129,10 @@ class NCFTrainDataset(Dataset):
         # cache the user->set lookup once per resample to avoid the int() each iter
         cache = self.user_pos
         N = self.num_items
+        empty: set = set()
         for k in range(n_neg):
             u = int(neg_users[k])
-            seen = cache[u]
+            seen = cache.get(u, empty)
             while True:
                 j = int(self.rng.integers(0, N))
                 if j not in seen:
