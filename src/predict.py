@@ -22,8 +22,14 @@ def topn_for_user(
     n: int = 10,
     checkpoint_path: str = "artifacts/neumf.pt",
     seen: Optional[Set[int]] = None,
+    return_original_ids: bool = False,
 ) -> List[Tuple[int, float]]:
-    """Return [(item_idx, score), ...] sorted by score descending."""
+    """Return [(item, score), ...] sorted by score descending.
+
+    If `return_original_ids=True`, item ids are mapped back to the original
+    MovieLens ids via the saved item_map; otherwise they are the dense
+    contiguous indices the model uses internally.
+    """
     ckpt = _load_checkpoint(checkpoint_path)
     cfg = ckpt["config"]
     num_users = ckpt["num_users"]
@@ -52,7 +58,13 @@ def topn_for_user(
     # top-N
     n = min(n, num_items)
     top_idx = scores.argsort()[::-1][:n]
-    return [(int(i), float(scores[i])) for i in top_idx]
+    pairs = [(int(i), float(scores[i])) for i in top_idx]
+
+    if return_original_ids and "item_map" in ckpt:
+        # item_map is original -> dense; invert it once
+        inv = {v: k for k, v in ckpt["item_map"].items()}
+        pairs = [(int(inv.get(i, i)), s) for i, s in pairs]
+    return pairs
 
 
 if __name__ == "__main__":

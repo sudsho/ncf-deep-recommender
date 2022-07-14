@@ -37,6 +37,9 @@ def health() -> dict:
 def recommend(
     user_id: int = Query(..., ge=0, description="User index (0..num_users-1)"),
     n: int = Query(10, ge=1, le=200, description="How many items to return"),
+    original_ids: bool = Query(
+        False, description="If true, return original MovieLens ids."
+    ),
 ) -> RecommendResponse:
     if not os.path.exists(CHECKPOINT_PATH):
         raise HTTPException(
@@ -44,7 +47,12 @@ def recommend(
             detail=f"checkpoint not found: {CHECKPOINT_PATH}. train a model first.",
         )
     try:
-        items = topn_for_user(user_id, n=n, checkpoint_path=CHECKPOINT_PATH)
+        items = topn_for_user(
+            user_id,
+            n=n,
+            checkpoint_path=CHECKPOINT_PATH,
+            return_original_ids=original_ids,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return RecommendResponse(
