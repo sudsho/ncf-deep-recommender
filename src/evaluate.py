@@ -46,9 +46,10 @@ def evaluate_loo(
     ndcgs: List[float] = []
 
     with torch.no_grad():
-        for _, row in test_df.iterrows():
-            u = int(row["user_idx"])
-            pos = int(row["item_idx"])
+        # itertuples is much faster than iterrows for big test sets
+        for row in test_df.itertuples(index=False):
+            u = int(getattr(row, "user_idx"))
+            pos = int(getattr(row, "item_idx"))
             seen = user_pos.get(u, set())
 
             negatives: List[int] = []
