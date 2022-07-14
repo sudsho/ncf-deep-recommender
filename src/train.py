@@ -62,7 +62,7 @@ def train(config_path: str) -> None:
             cfg["data"]["path"],
             min_interactions=cfg["data"].get("min_user_interactions", 5),
         )
-        df, _, _ = remap_ids(df)
+        df, user_map, item_map = remap_ids(df)
 
         num_users = int(df["user_idx"].max()) + 1
         num_items = int(df["item_idx"].max()) + 1
@@ -140,6 +140,8 @@ def train(config_path: str) -> None:
                 "state_dict": model.state_dict(),
                 "num_users": num_users,
                 "num_items": num_items,
+                "user_map": user_map,
+                "item_map": item_map,
                 "config": cfg,
             },
             out_path,
