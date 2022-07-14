@@ -2,14 +2,16 @@
 
 Reads a YAML config, loads MovieLens, builds the chosen model,
 trains with binary cross-entropy on positive + negative pairs.
-Eval and MLflow tracking land in later commits.
+Logs params + per-epoch metrics to MLflow when enabled.
 """
 from __future__ import annotations
 
 import argparse
 import os
 import time
+from contextlib import nullcontext
 
+import mlflow
 import torch
 import torch.nn as nn
 import yaml
@@ -31,92 +33,120 @@ def load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 
+def _flatten_cfg(cfg: dict, prefix: str = "") -> dict:
+    out = {}
+    for k, v in cfg.items():
+        key = f"{prefix}{k}"
+        if isinstance(v, dict):
+            out.update(_flatten_cfg(v, prefix=f"{key}."))
+        else:
+            out[key] = v
+    return out
+
+
 def train(config_path: str) -> None:
     cfg = load_config(config_path)
     torch.manual_seed(cfg["train"].get("seed", 42))
 
-    df = load_ratings(
-        cfg["data"]["path"],
-        min_interactions=cfg["data"].get("min_user_interactions", 5),
-    )
-    df, _, _ = remap_ids(df)
+    use_mlflow = cfg.get("mlflow", {}).get("enabled", False)
+    if use_mlflow:
+        mlflow.set_tracking_uri(cfg["mlflow"].get("tracking_uri", "./mlruns"))
+        mlflow.set_experiment(cfg["mlflow"].get("experiment_name", "ncf"))
+    run_ctx = mlflow.start_run() if use_mlflow else nullcontext()
 
-    num_users = int(df["user_idx"].max()) + 1
-    num_items = int(df["item_idx"].max()) + 1
-    print(f"users={num_users} items={num_items} rows={len(df)}")
+    with run_ctx:
+        if use_mlflow:
+            mlflow.log_params(_flatten_cfg(cfg))
 
-    user_pos = build_user_pos_set(df)
-    train_df, test_df = leave_one_out_split(df)
+        df = load_ratings(
+            cfg["data"]["path"],
+            min_interactions=cfg["data"].get("min_user_interactions", 5),
+        )
+        df, _, _ = remap_ids(df)
 
-    train_ds = NCFTrainDataset(
-        train_df,
-        user_pos,
-        num_items=num_items,
-        num_negatives=cfg["data"].get("num_negatives_train", 4),
-        seed=cfg["train"].get("seed", 42),
-    )
-    loader = DataLoader(
-        train_ds,
-        batch_size=cfg["train"]["batch_size"],
-        shuffle=True,
-        num_workers=cfg["train"].get("num_workers", 0),
-    )
+        num_users = int(df["user_idx"].max()) + 1
+        num_items = int(df["item_idx"].max()) + 1
+        print(f"users={num_users} items={num_items} rows={len(df)}")
 
-    device = torch.device(cfg["train"].get("device", "cpu"))
-    model = build_model(num_users, num_items, cfg["model"]).to(device)
-    opt = torch.optim.Adam(
-        model.parameters(),
-        lr=cfg["train"]["lr"],
-        weight_decay=cfg["train"].get("weight_decay", 0.0),
-    )
-    loss_fn = nn.BCEWithLogitsLoss()
+        user_pos = build_user_pos_set(df)
+        train_df, test_df = leave_one_out_split(df)
 
-    epochs = cfg["train"]["epochs"]
-    for ep in range(1, epochs + 1):
-        model.train()
-        train_ds.resample()  # fresh negatives each epoch
-        running = 0.0
-        n_batches = 0
-        t0 = time.time()
-        for u, i, y in loader:
-            u, i, y = u.to(device), i.to(device), y.to(device)
-            logits = model(u, i)
-            loss = loss_fn(logits, y)
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-            running += loss.item()
-            n_batches += 1
-        avg_loss = running / max(n_batches, 1)
-        hr, nd = evaluate_loo(
-            model,
-            test_df,
+        train_ds = NCFTrainDataset(
+            train_df,
             user_pos,
             num_items=num_items,
-            top_k=cfg["eval"]["top_k"],
-            num_negatives=cfg["data"].get("num_negatives_eval", 99),
-            device=str(device),
+            num_negatives=cfg["data"].get("num_negatives_train", 4),
             seed=cfg["train"].get("seed", 42),
         )
-        print(
-            f"epoch {ep}/{epochs} loss={avg_loss:.4f} "
-            f"hr@{cfg['eval']['top_k']}={hr:.4f} ndcg@{cfg['eval']['top_k']}={nd:.4f} "
-            f"time={time.time()-t0:.1f}s"
+        loader = DataLoader(
+            train_ds,
+            batch_size=cfg["train"]["batch_size"],
+            shuffle=True,
+            num_workers=cfg["train"].get("num_workers", 0),
         )
 
-    out_dir = cfg["artifacts"]["out_dir"]
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, cfg["artifacts"]["model_name"])
-    torch.save(
-        {
-            "state_dict": model.state_dict(),
-            "num_users": num_users,
-            "num_items": num_items,
-            "config": cfg,
-        },
-        out_path,
-    )
-    print(f"saved {out_path}")
+        device = torch.device(cfg["train"].get("device", "cpu"))
+        model = build_model(num_users, num_items, cfg["model"]).to(device)
+        opt = torch.optim.Adam(
+            model.parameters(),
+            lr=cfg["train"]["lr"],
+            weight_decay=cfg["train"].get("weight_decay", 0.0),
+        )
+        loss_fn = nn.BCEWithLogitsLoss()
+
+        epochs = cfg["train"]["epochs"]
+        for ep in range(1, epochs + 1):
+            model.train()
+            train_ds.resample()  # fresh negatives each epoch
+            running = 0.0
+            n_batches = 0
+            t0 = time.time()
+            for u, i, y in loader:
+                u, i, y = u.to(device), i.to(device), y.to(device)
+                logits = model(u, i)
+                loss = loss_fn(logits, y)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                running += loss.item()
+                n_batches += 1
+            avg_loss = running / max(n_batches, 1)
+            hr, nd = evaluate_loo(
+                model,
+                test_df,
+                user_pos,
+                num_items=num_items,
+                top_k=cfg["eval"]["top_k"],
+                num_negatives=cfg["data"].get("num_negatives_eval", 99),
+                device=str(device),
+                seed=cfg["train"].get("seed", 42),
+            )
+            print(
+                f"epoch {ep}/{epochs} loss={avg_loss:.4f} "
+                f"hr@{cfg['eval']['top_k']}={hr:.4f} "
+                f"ndcg@{cfg['eval']['top_k']}={nd:.4f} "
+                f"time={time.time()-t0:.1f}s"
+            )
+            if use_mlflow:
+                mlflow.log_metrics(
+                    {"loss": avg_loss, "hr": hr, "ndcg": nd}, step=ep
+                )
+
+        out_dir = cfg["artifacts"]["out_dir"]
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, cfg["artifacts"]["model_name"])
+        torch.save(
+            {
+                "state_dict": model.state_dict(),
+                "num_users": num_users,
+                "num_items": num_items,
+                "config": cfg,
+            },
+            out_path,
+        )
+        print(f"saved {out_path}")
+        if use_mlflow:
+            mlflow.log_artifact(out_path)
 
 
 if __name__ == "__main__":
