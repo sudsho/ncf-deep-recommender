@@ -8,9 +8,11 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
+import torch
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
+from ..model import build_model
 from ..predict import topn_for_user
 
 app = FastAPI(title="ncf-deep-recommender", version="0.1.0")
@@ -18,6 +20,22 @@ app = FastAPI(title="ncf-deep-recommender", version="0.1.0")
 CHECKPOINT_PATH = os.environ.get("NCF_CHECKPOINT", "artifacts/neumf.pt")
 DEFAULT_TOP_N = int(os.environ.get("NCF_DEFAULT_N", "10"))
 MAX_TOP_N = int(os.environ.get("NCF_MAX_N", "200"))
+
+# cache the loaded model + maps so we don't re-read the checkpoint on every request
+_state: dict = {"model": None, "ckpt": None}
+
+
+def _ensure_loaded() -> dict:
+    if _state["model"] is None:
+        if not os.path.exists(CHECKPOINT_PATH):
+            raise FileNotFoundError(CHECKPOINT_PATH)
+        ckpt = torch.load(CHECKPOINT_PATH, map_location="cpu")
+        model = build_model(ckpt["num_users"], ckpt["num_items"], ckpt["config"]["model"])
+        model.load_state_dict(ckpt["state_dict"])
+        model.eval()
+        _state["model"] = model
+        _state["ckpt"] = ckpt
+    return _state
 
 
 class Recommendation(BaseModel):
@@ -43,7 +61,9 @@ def recommend(
         False, description="If true, return original MovieLens ids."
     ),
 ) -> RecommendResponse:
-    if not os.path.exists(CHECKPOINT_PATH):
+    try:
+        _ensure_loaded()
+    except FileNotFoundError:
         raise HTTPException(
             status_code=503,
             detail=f"checkpoint not found: {CHECKPOINT_PATH}. train a model first.",
