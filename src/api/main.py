@@ -50,7 +50,28 @@ class RecommendResponse(BaseModel):
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    info = {"status": "ok", "checkpoint_loaded": False}
+    if os.path.exists(CHECKPOINT_PATH):
+        info["checkpoint_loaded"] = _state["model"] is not None
+        info["checkpoint_path"] = CHECKPOINT_PATH
+    return info
+
+
+@app.get("/info")
+def info() -> dict:
+    """Return model metadata: variant, num users, num items."""
+    if not os.path.exists(CHECKPOINT_PATH):
+        raise HTTPException(status_code=503, detail="checkpoint not found")
+    s = _ensure_loaded()
+    cfg = s["ckpt"]["config"]
+    return {
+        "model_type": cfg["model"]["type"],
+        "num_users": s["ckpt"]["num_users"],
+        "num_items": s["ckpt"]["num_items"],
+        "embed_dim_gmf": cfg["model"].get("embed_dim_gmf"),
+        "embed_dim_mlp": cfg["model"].get("embed_dim_mlp"),
+        "mlp_layers": cfg["model"].get("mlp_layers"),
+    }
 
 
 @app.get("/recommend", response_model=RecommendResponse)
