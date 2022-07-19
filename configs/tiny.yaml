@@ -1,0 +1,34 @@
+# tiny config used by smoke tests / CI (no real data, no MLflow)
+data:
+  path: data/tiny/u.data
+  min_user_interactions: 1
+  num_negatives_train: 2
+  num_negatives_eval: 9
+  test_size: 1
+
+model:
+  type: neumf
+  embed_dim_gmf: 8
+  embed_dim_mlp: 8
+  mlp_layers: [16, 8]
+  dropout: 0.0
+
+train:
+  batch_size: 64
+  epochs: 1
+  lr: 1.0e-3
+  weight_decay: 0.0
+  num_workers: 0
+  device: cpu
+  seed: 0
+
+eval:
+  top_k: 5
+
+mlflow:
+  enabled: false
+  experiment_name: ncf-tiny
+
+artifacts:
+  out_dir: artifacts
+  model_name: tiny.pt
