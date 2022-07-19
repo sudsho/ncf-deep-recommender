@@ -17,6 +17,19 @@ def _load_checkpoint(path: str) -> dict:
     return torch.load(path, map_location="cpu")
 
 
+def load_user_seen_from_csv(path: str) -> dict:
+    """Helper for the API: load a user_idx -> seen-items dict from a csv with
+    columns user_idx,item_idx (e.g. the training split saved alongside the model).
+    """
+    import pandas as pd
+
+    df = pd.read_csv(path)
+    out: dict = {}
+    for u, it in zip(df["user_idx"].values, df["item_idx"].values):
+        out.setdefault(int(u), set()).add(int(it))
+    return out
+
+
 def topn_for_user(
     user_idx: int,
     n: int = 10,

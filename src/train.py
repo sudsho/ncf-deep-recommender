@@ -134,6 +134,9 @@ def train(config_path: str) -> None:
 
         out_dir = cfg["artifacts"]["out_dir"]
         os.makedirs(out_dir, exist_ok=True)
+        # also dump the train split so the api can mask user's seen items
+        train_csv = os.path.join(out_dir, "train_split.csv")
+        train_df[["user_idx", "item_idx"]].to_csv(train_csv, index=False)
         out_path = os.path.join(out_dir, cfg["artifacts"]["model_name"])
         torch.save(
             {
