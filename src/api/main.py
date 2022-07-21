@@ -13,16 +13,17 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
 from ..model import build_model
-from ..predict import topn_for_user
+from ..predict import load_user_seen_from_csv, topn_for_user
 
 app = FastAPI(title="ncf-deep-recommender", version="0.1.0")
 
 CHECKPOINT_PATH = os.environ.get("NCF_CHECKPOINT", "artifacts/neumf.pt")
+TRAIN_SPLIT_PATH = os.environ.get("NCF_TRAIN_SPLIT", "artifacts/train_split.csv")
 DEFAULT_TOP_N = int(os.environ.get("NCF_DEFAULT_N", "10"))
 MAX_TOP_N = int(os.environ.get("NCF_MAX_N", "200"))
 
 # cache the loaded model + maps so we don't re-read the checkpoint on every request
-_state: dict = {"model": None, "ckpt": None}
+_state: dict = {"model": None, "ckpt": None, "seen": None}
 
 
 def _ensure_loaded() -> dict:
@@ -35,6 +36,10 @@ def _ensure_loaded() -> dict:
         model.eval()
         _state["model"] = model
         _state["ckpt"] = ckpt
+        if os.path.exists(TRAIN_SPLIT_PATH):
+            _state["seen"] = load_user_seen_from_csv(TRAIN_SPLIT_PATH)
+        else:
+            _state["seen"] = {}
     return _state
 
 
@@ -83,17 +88,19 @@ def recommend(
     ),
 ) -> RecommendResponse:
     try:
-        _ensure_loaded()
+        s = _ensure_loaded()
     except FileNotFoundError:
         raise HTTPException(
             status_code=503,
             detail=f"checkpoint not found: {CHECKPOINT_PATH}. train a model first.",
         )
     try:
+        seen_for_user = s["seen"].get(user_id) if s.get("seen") else None
         items = topn_for_user(
             user_id,
             n=n,
             checkpoint_path=CHECKPOINT_PATH,
+            seen=seen_for_user,
             return_original_ids=original_ids,
         )
     except ValueError as e:
