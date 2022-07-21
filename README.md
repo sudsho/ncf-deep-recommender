@@ -77,8 +77,15 @@ After training, hit the FastAPI endpoint (added in `src/api/main.py`):
 
 ```bash
 uvicorn src.api.main:app --reload
+# 5 dense-index items, masking what the user already saw
 curl 'http://localhost:8000/recommend?user_id=12&n=5'
+
+# original MovieLens ids, useful when joining against a movies metadata file
+curl 'http://localhost:8000/recommend?user_id=12&n=5&original_ids=true'
 ```
+
+The service caches the model on first request, so cold start is ~200 ms and
+subsequent requests are millisecond-scale on CPU for ml-100k.
 
 ## Status
 
