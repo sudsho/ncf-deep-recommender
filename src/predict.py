@@ -63,13 +63,16 @@ def topn_for_user(
         scores = model(users, items).cpu().numpy()
 
     # mask seen items so we don't recommend things the user already has
+    seen_count = 0
     if seen:
         for it in seen:
             if 0 <= it < num_items:
                 scores[it] = -1e9
+                seen_count += 1
 
-    # top-N
-    n = min(n, num_items)
+    # top-N (cannot exceed the number of unseen items)
+    available = num_items - seen_count
+    n = max(1, min(n, available))
     top_idx = scores.argsort()[::-1][:n]
     pairs = [(int(i), float(scores[i])) for i in top_idx]
 
