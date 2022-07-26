@@ -10,10 +10,10 @@ from typing import List, Optional
 
 import torch
 from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel
 
 from ..model import build_model
 from ..predict import load_user_seen_from_csv, topn_for_user
+from .schemas import Recommendation, RecommendResponse
 
 app = FastAPI(title="ncf-deep-recommender", version="0.1.0")
 
@@ -41,16 +41,6 @@ def _ensure_loaded() -> dict:
         else:
             _state["seen"] = {}
     return _state
-
-
-class Recommendation(BaseModel):
-    item_id: int
-    score: float
-
-
-class RecommendResponse(BaseModel):
-    user_id: int
-    items: List[Recommendation]
 
 
 @app.get("/health")
