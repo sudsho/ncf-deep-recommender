@@ -1,0 +1,12 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+notebooks
+data
+mlruns
+artifacts
+.idea
+.vscode
+tests

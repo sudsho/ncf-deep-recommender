@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  api:
+    build: .
+    image: ncf-deep-recommender:latest
+    ports:
+      - "8000:8000"
+    environment:
+      NCF_CHECKPOINT: /app/artifacts/neumf.pt
+      NCF_TRAIN_SPLIT: /app/artifacts/train_split.csv
+      NCF_DEFAULT_N: "10"
+      NCF_MAX_N: "200"
+    volumes:
+      - ./artifacts:/app/artifacts:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v1.27.0
+    command: mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri /mlruns
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlruns
