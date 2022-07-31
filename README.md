@@ -102,6 +102,12 @@ curl 'http://localhost:8000/recommend?user_id=12&n=5'
 The compose file mounts `./artifacts/` read-only into the container so the
 service picks up the latest checkpoint without rebuilding.
 
+## CI
+
+A reference GitHub Actions workflow lives at `ci/test.yml.example`. It runs
+the test suite on Python 3.9 and 3.10, then a separate docker-build job. To
+enable, copy it to `.github/workflows/test.yml`.
+
 ## Project layout
 
 ```
