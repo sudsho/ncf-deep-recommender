@@ -87,10 +87,41 @@ curl 'http://localhost:8000/recommend?user_id=12&n=5&original_ids=true'
 The service caches the model on first request, so cold start is ~200 ms and
 subsequent requests are millisecond-scale on CPU for ml-100k.
 
-## Status
+## Run with Docker
 
-Work in progress. Model trains, eval works, FastAPI endpoint and Docker land
-in upcoming commits.
+Train locally first so `artifacts/` is populated, then:
+
+```bash
+docker compose up --build
+# api on :8000, mlflow ui on :5000
+curl 'http://localhost:8000/health'
+curl 'http://localhost:8000/info'
+curl 'http://localhost:8000/recommend?user_id=12&n=5'
+```
+
+The compose file mounts `./artifacts/` read-only into the container so the
+service picks up the latest checkpoint without rebuilding.
+
+## Project layout
+
+```
+src/
+  data.py        # ratings loader, leave-one-out split, neg sampling, Dataset
+  model.py       # GMF, MLP, NeuMF + factory
+  train.py       # config-driven training loop with mlflow logging
+  evaluate.py    # HR@K + NDCG@K (loo with sampled negatives)
+  predict.py     # top-N for a user from a saved checkpoint
+  api/
+    main.py      # FastAPI app
+    schemas.py   # pydantic v1 schemas
+configs/
+  default.yaml   # ml-100k baseline
+  neumf.yaml     # bigger NeuMF run
+  tiny.yaml      # used by smoke / CI
+tests/           # pytest suite
+notebooks/eda.ipynb
+scripts/         # download_data.sh, make_tiny_data.py
+```
 
 ## License
 
