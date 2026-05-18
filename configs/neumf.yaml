@@ -1,4 +1,4 @@
-# NeuMF fusion config — slightly bigger than default
+# NeuMF fusion config - slightly bigger than default
 data:
   path: data/ml-100k/u.data
   min_user_interactions: 5
